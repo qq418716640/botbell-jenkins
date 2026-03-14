@@ -1,0 +1,65 @@
+@Library('botbell') _
+
+pipeline {
+    agent any
+
+    environment {
+        BOTBELL_TOKEN = credentials('botbell-token')
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                echo 'Building...'
+                // sh 'mvn clean package'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Testing...'
+                // sh 'mvn test'
+            }
+        }
+
+        stage('Deploy Approval') {
+            when { branch 'main' }
+            steps {
+                script {
+                    botbell.approve(
+                        message: "Deploy #${BUILD_NUMBER} to production?\nBranch: ${BRANCH_NAME}\nCommit: ${GIT_COMMIT?.take(7)}",
+                        timeout: 1800,
+                    )
+                }
+            }
+        }
+
+        stage('Deploy') {
+            when { branch 'main' }
+            steps {
+                echo 'Deploying...'
+                // sh 'bash deploy.sh'
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                botbell.notify(
+                    title: '✅ Pipeline Success',
+                    message: "#${BUILD_NUMBER} on ${BRANCH_NAME}\nDuration: ${currentBuild.durationString}",
+                    url: "${BUILD_URL}",
+                )
+            }
+        }
+        failure {
+            script {
+                botbell.notify(
+                    title: '❌ Pipeline Failed',
+                    message: "#${BUILD_NUMBER} on ${BRANCH_NAME}\n${BUILD_URL}console",
+                )
+            }
+        }
+    }
+}
