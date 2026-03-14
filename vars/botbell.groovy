@@ -29,7 +29,7 @@ private static final int DEFAULT_POLL_INTERVAL = 5    // seconds
  *   format   (optional) - "text" or "markdown"
  *   token    (optional) - Bot token (default: env.BOTBELL_TOKEN)
  *   apiBase  (optional) - API base URL
- * @return Map with message_id and delivered
+ * @return Map with messageId and delivered
  */
 def notify(Map config) {
     validateRequired(config, 'message')
@@ -64,11 +64,11 @@ def approve(Map config) {
     validateRequired(config, 'message')
     def token = resolveToken(config)
     def apiBase = config.apiBase ?: DEFAULT_API_BASE
-    def timeout = config.timeout ?: DEFAULT_TIMEOUT
-    def pollInterval = config.pollInterval ?: DEFAULT_POLL_INTERVAL
+    def timeout = config.containsKey('timeout') ? config.timeout : DEFAULT_TIMEOUT
+    def pollInterval = config.containsKey('pollInterval') ? config.pollInterval : DEFAULT_POLL_INTERVAL
 
     def body = buildMessageBody(config)
-    body.title = config.title ?: '🔔 Approval Required'
+    if (!body.title) body.title = '🔔 Approval Required'
     body.reply_mode = 'actions_only'
     body.actions = config.actions ?: [
         [key: 'approve', label: 'Approve'],
@@ -141,38 +141,57 @@ private Map buildMessageBody(Map config) {
 
 @NonCPS
 private Map httpPost(String url, Map body) {
-    def conn = new URL(url).openConnection() as HttpURLConnection
-    conn.requestMethod = 'POST'
-    conn.setRequestProperty('Content-Type', 'application/json')
-    conn.setRequestProperty('Accept', 'application/json')
-    conn.setRequestProperty('User-Agent', 'botbell-jenkins/0.1.0')
-    conn.connectTimeout = 10000
-    conn.readTimeout = 10000
-    conn.doOutput = true
+    def conn = null
+    try {
+        conn = new URL(url).openConnection() as HttpURLConnection
+        conn.requestMethod = 'POST'
+        conn.setRequestProperty('Content-Type', 'application/json')
+        conn.setRequestProperty('Accept', 'application/json')
+        conn.setRequestProperty('User-Agent', 'botbell-jenkins/0.1.0')
+        conn.connectTimeout = 10000
+        conn.readTimeout = 10000
+        conn.doOutput = true
 
-    conn.outputStream.withWriter('UTF-8') { it.write(JsonOutput.toJson(body)) }
+        conn.outputStream.withWriter('UTF-8') { it.write(JsonOutput.toJson(body)) }
 
-    return parseResponse(conn)
+        return parseResponse(conn)
+    } catch (IOException e) {
+        throw new RuntimeException("BotBell: Connection failed — ${e.message}", e)
+    } finally {
+        conn?.disconnect()
+    }
 }
 
 @NonCPS
 private Map httpGet(String url, String token) {
-    def conn = new URL(url).openConnection() as HttpURLConnection
-    conn.requestMethod = 'GET'
-    conn.setRequestProperty('X-Bot-Token', token)
-    conn.setRequestProperty('Accept', 'application/json')
-    conn.setRequestProperty('User-Agent', 'botbell-jenkins/0.1.0')
-    conn.connectTimeout = 10000
-    conn.readTimeout = 10000
+    def conn = null
+    try {
+        conn = new URL(url).openConnection() as HttpURLConnection
+        conn.requestMethod = 'GET'
+        conn.setRequestProperty('X-Bot-Token', token)
+        conn.setRequestProperty('Accept', 'application/json')
+        conn.setRequestProperty('User-Agent', 'botbell-jenkins/0.1.0')
+        conn.connectTimeout = 10000
+        conn.readTimeout = 10000
 
-    return parseResponse(conn)
+        return parseResponse(conn)
+    } catch (IOException e) {
+        throw new RuntimeException("BotBell: Connection failed — ${e.message}", e)
+    } finally {
+        conn?.disconnect()
+    }
 }
 
 @NonCPS
 private Map parseResponse(HttpURLConnection conn) {
     def code = conn.responseCode
     def stream = (code >= 200 && code < 300) ? conn.inputStream : conn.errorStream
-    def text = stream?.getText('UTF-8') ?: '{}'
+    def text = ''
+    try {
+        text = stream?.getText('UTF-8') ?: '{}'
+    } finally {
+        stream?.close()
+    }
 
     def json = new JsonSlurper().parseText(text) as Map
     if (code >= 400) {

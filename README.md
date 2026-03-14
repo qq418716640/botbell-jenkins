@@ -58,17 +58,21 @@ pipeline {
     }
     post {
         success {
-            botbell.notify(
-                message: "#${BUILD_NUMBER} deployed to production",
-                title: "✅ Deploy Success",
-                url: "${BUILD_URL}",
-            )
+            script {
+                botbell.notify(
+                    message: "#${BUILD_NUMBER} deployed to production",
+                    title: "✅ Deploy Success",
+                    url: "${BUILD_URL}",
+                )
+            }
         }
         failure {
-            botbell.notify(
-                message: "#${BUILD_NUMBER} failed on ${BRANCH_NAME}\n${BUILD_URL}",
-                title: "❌ Build Failed",
-            )
+            script {
+                botbell.notify(
+                    message: "#${BUILD_NUMBER} failed on ${BRANCH_NAME}\n${BUILD_URL}",
+                    title: "❌ Build Failed",
+                )
+            }
         }
     }
 }
